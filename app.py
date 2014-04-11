@@ -7,6 +7,7 @@ app = Flask(__name__)
 mongodb_uri = 'mongodb://5chackathon:hackweek@ds041367.mongolab.com:41367/hackweek'
 db_name = 'hackweek'
 connection = pymongo.Connection(mongodb_uri)
+db = connection[db_name]
 
 
 MAJORS = yaml.load(file('majors.yaml', 'r'))
@@ -19,12 +20,28 @@ def majors():
 def ratings(major, number):
     if request.method == 'POST':
         # Store the review in the database
+        review_text = request.form.get('review', None)
+        name = request.form.get('name', None)
+        rating = int(request.form['rating'])
+        if review_text:
+            if not name:
+                name = 'Anonymous'
 
+            review = {
+                'name': name,
+                'text': review_text,
+                'major': major,
+                'course_number': number,
+                'rating': rating
+            }
+
+            db.reviews.insert(review)
             # Change the request type to GET
+            return redirect(url_for('ratings', major=major, number=number), code=303)
 
-    #find the reviews
+    reviews = list(db.reviews.find({'major': major, 'course_number': number}))
+    course = db.course_info.find({"major": major, "number" : number})
     avg_rating = None
-    #Once we have the reviews fimd the average rating for the course 
     if reviews:
         ratings_sum = sum([r.get('rating', 0) for r in reviews])
         avg_rating = float(ratings_sum) / len(reviews)
@@ -43,15 +60,28 @@ def classes_for_major():
 
     filter_doc = {}
 
+    if major_code != 'any':
+        filter_doc['major'] = major_code
+        major = MAJORS[major_code]
+    else:
+        major_code = None
 
-    #get a listed of the courses offered by name and 
+    if school != 'any':
+        filter_doc['school'] = school
+    else:
+        school = None
 
+    def by_name(course):
+        return course['name']
+
+    courses = sorted(list(db.course_info.find(filter_doc)), key=by_name)
     return render_template("courses.html", courses=courses,
                            major_code=major_code, major=major)
 
 
 @app.route('/')
 def index():
+    courses = list(db.course_info.find())
     return render_template('index.html', courses=courses, majors=MAJORS)
 
 
